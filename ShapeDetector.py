@@ -99,12 +99,14 @@ class Shape:
                 cY = int((M["m01"] / M["m00"]))
 
                 x, y, w, h = cv2.boundingRect(contour)
+                bbox = (x, y, w, h)
+
                 if w/h > self.contour_ratio_higher_threshold or w/h < self.contour_ratio_lower_threshold:
                     continue
                
                 cropped_image = self.image[y:y+h, x:x+w]
                 cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY) 
-                score, class_ =  self.detect_traffic_sign(cropped_image, contour)
+                score, class_ =  self.detect_traffic_sign(cropped_image, contour, bbox)
 
                 if score is None:
                     continue
@@ -122,25 +124,27 @@ class Shape:
 
     
 
-    def detect_traffic_sign(self, cropped, contour):
-
-        resized   = cv2.resize(cropped, (self.input_shape[0], self.input_shape[1]))
-        expanded  = np.expand_dims(resized, axis=-1)
-        expanded  = np.expand_dims(expanded, axis=0)
-        probs     = np.round(self.keras_model.predict(expanded)[0], 1)
-        max_value = np.amax(probs)
+    def detect_traffic_sign(self, cropped, contour, bbox):
+        
+        x, y, w, h = bbox
+        center     = ((2*x + w)//2, (2*y + h)//2)
+        resized    = cv2.resize(cropped, (self.input_shape[0], self.input_shape[1]))
+        expanded   = np.expand_dims(resized, axis=-1)
+        expanded   = np.expand_dims(expanded, axis=0)
+        probs      = np.round(self.keras_model.predict(expanded)[0], 1)
+        max_value  = np.amax(probs)
 
 
         if max_value < 0.9:
             return None, None
         
         max_ind  = np.where(probs == max_value)[0]
-        center = get_center(contour)
+
         std = standard_deviation(center, contour)
         print(std)
 
         if len(max_ind) == 1:
-            if max_ind == 0 or max_ind != 2 and std >10 or max_ind ==2 and std > 30:
+            if max_ind == 0 or max_ind != 2 and std > 4 or max_ind ==2 and std > 30:
                 return None, None
             else:
                 return max_value, self.class_dict[max_ind[0]]
@@ -151,7 +155,7 @@ class Shape:
 
 
 
-def distance( x1, y1, x2, y2):
+def distance(x1, y1, x2, y2):
     return ((y2-y1)**2 + (x2-x1)**2)**(1/2)
 
 def standard_deviation(center, contour):
