@@ -1,51 +1,41 @@
-from ShapeDetector import Shape
-import cv2
+from SignDetector import SignDetector
+import cv2, os
 from datetime import datetime
 
-SAVE_VIDEO = False
 
+ROOT_DIR          = os.getcwd()
+CAMERA_RESOLUTION = (640, 480)
+CAMERA_FPS        = 20
 
-if SAVE_VIDEO:
-    now = datetime.now()
-    MINUTE, HOUR, DAY, MONTH, YEAR = now.minute, now.hour, now.day, now.month, now.year
-    DATE_IND = "_{}{}{}-{}{}".format(YEAR, MONTH, DAY, HOUR, MINUTE)
-
-    red_VIDEO_DIR = 'redvideo{}.avi'.format(DATE_IND)
-    red_VIDEOWRITER = cv2.VideoWriter(red_VIDEO_DIR, cv2.VideoWriter_fourcc('M','J','P','G'), 5, (320,240))
-
-    blue_VIDEO_DIR = 'bluevideo{}.avi'.format(DATE_IND)
-    blue_VIDEOWRITER = cv2.VideoWriter(blue_VIDEO_DIR, cv2.VideoWriter_fourcc('M','J','P','G'), 5, (320,240))
-
-    total_VIDEO_DIR = 'totalvideo{}.avi'.format(DATE_IND)
-    total_VIDEOWRITER = cv2.VideoWriter(total_VIDEO_DIR, cv2.VideoWriter_fourcc('M','J','P','G'), 5, (320,240))
-
+RECORD_VIDEO      = False
+RECORDER_FPS      = 5
 
 cap = cv2.VideoCapture(0)
 
-cap.set(cv2.CAP_PROP_FRAME_WIDTH,640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
-cap.set(cv2.CAP_PROP_FPS,20)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_RESOLUTION[0])
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_RESOLUTION[1])
+cap.set(cv2.CAP_PROP_FPS, CAMERA_FPS)
+
+if RECORD_VIDEO:
+
+    now                            = datetime.now()
+    MINUTE, HOUR, DAY, MONTH, YEAR = now.minute, now.hour, now.day, now.month, now.year
+    DATE_IND                       = "_{}{}{}-{}{}".format(YEAR, MONTH, DAY, HOUR, MINUTE)
+
+    out_video_name  = 'out{}.avi'.format(DATE_IND)
+    OUT_VIDEO_DIR   = os.path.join(ROOT_DIR, total_video_name)
+    OUT_VIDEOWRITER = cv2.VideoWriter(OUT_VIDEO_DIR, cv2.VideoWriter_fourcc('M','J','P','G'), RECORDER_FPS, CAMERA_RESOLUTION)
 
 
-blue_shape_detector = Shape('blue')
-red_shape_detector  = Shape('red')
-both_shape_detector = Shape('both')
+sign_detector = SignDetector('both')
 
 while cap.isOpened():
-    ret, image = cap.read()
 
-    # detected_blue_signs = blue_shape_detector.detect(image, display=True)
-    # cv2.imshow('detected_blue_signs', detected_blue_signs)
-    # detected_red_signs = red_shape_detector.detect(image, display=True)
-    # cv2.imshow('detected_red_signs', detected_red_signs)
-    # cv2.waitKey(1)
-
-    detected_br_signs = both_shape_detector.detect(image, visualize=True, display=True)
+    ret, image     = cap.read()
+    detected_signs = sign_detector.detect(image, display=True)
+    cv2.imshow('preprocessed_image', sign_detector.preprocessed_image)
     cv2.waitKey(1)
     
-if SAVE_VIDEO:
-        red_VIDEOWRITER.write(detected_red_signs)
-        blue_VIDEOWRITER.write(detected_blue_signs)
-        total_VIDEOWRITER.write(detected_blue_signs)
-        total_VIDEOWRITER.write(detected_red_signs)
+    if RECORD_VIDEO:
+        out_VIDEOWRITER.write(detected_signs)
 
