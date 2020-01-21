@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import imutils
 from model import lenet, mobilenet
-from utils import distance, standard_deviation
+from utils import get_distance, standard_deviation
 from time import time
 from scipy.ndimage.morphology import binary_fill_holes
 from skimage import morphology
@@ -20,12 +20,18 @@ class SignDetector:
         """
 
         self.mask_color = mask_color
-        self.lower_blue = np.array([113,109,88])
-        self.upper_blue = np.array([120,255,255])
+
+        self.lower_blue = np.array([110,109,66])
+        self.upper_blue = np.array([130,255,255])
         
-        self.lower_red = np.array([168,122,66])
-        self.upper_red = np.array([180,255,255])
-        
+        self.lower_red_pos = np.array([172,166,66])
+        self.upper_red_pos = np.array([180,255,255])
+
+        self.lower_red_neg = np.array([0,166,66])
+        self.upper_red_neg = np.array([8,255,255])
+
+        self.lower_white   = np.array([0,0,200])
+        self.upper_white   = np.array([180,30,255])
         '''
         self.lower_blue = np.array([104,77,88])
         self.upper_blue = np.array([121,255,255])
@@ -37,19 +43,19 @@ class SignDetector:
         self.blurred_filter = (5, 5)
         self.blurred_param2 = 0
 
-        self.contour_area_lower_threshold   = 900
+        self.contour_area_lower_threshold   = 2500
         self.contour_area_higher_threshold  = 400000
-        self.contour_ratio_lower_threshold  = 3/4
-        self.contour_ratio_higher_threshold = 4/3
-        self.minimum_isolated_pixel_area    = 100
+        self.contour_ratio_lower_threshold  = 5/6
+        self.contour_ratio_higher_threshold = 6/5
+        self.minimum_isolated_pixel_area    = 900
 
         self.keras_weights_dir      = 'models/lenetv9.h5'
         self.input_shape            = (32, 32, 1)
         self.keras_model            = lenet(self.keras_weights_dir, input_shape=self.input_shape)
         self.class_dict             = {0: 'negatives', 1: 'no-entry', 2: 'pedest-crossing', 3: 'turn-right'}
         self.pred_confidency        = 0.9
-        self.triangle_std_threshold = 30
-        self.circle_std_threshold   = 3
+        self.triangle_std_threshold = 50
+        self.circle_std_threshold   = 10
 
 
     def bluemask_image(self): 
@@ -78,10 +84,26 @@ class SignDetector:
         """
 
         hsv               = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
-        mask_red          = cv2.inRange(hsv, self.lower_red, self.upper_red)
-        red_masked_image  = cv2.bitwise_and(self.image, self.image, mask = mask_red)
+        mask_red_pos      = cv2.inRange(hsv, self.lower_red_pos, self.upper_red_pos)
+        mask_red_neg      = cv2.inRange(hsv, self.lower_red_neg, self.upper_red_neg)
+        red_masked_image  = cv2.bitwise_and(self.image, self.image, mask = mask_red_neg + mask_red_pos)
 
         return red_masked_image
+
+    def whitemask_image(self):
+        """
+        Masking frame with predefined white filters.
+
+        Returns
+        =======
+        white_masked_image: np.ndarray
+        """
+
+        hsv                = cv2.cvtColor(self.image, cv2.COLOR_BGR2HSV)
+        mask_white         = cv2.inRange(hsv, self.lower_white, self.upper_white)
+        white_masked_image = cv2.bitwise_and(self.image, self.image, mask = mask_white)
+
+        return white_masked_image
 
 
     def mask_image(self):
@@ -96,9 +118,9 @@ class SignDetector:
         if self.mask_color   == 'red':
             self.masked_image = self.redmask_image()
         elif self.mask_color == 'blue':
-            self.masked_image = self.bluemask_image()    
+            self.masked_image = self.bluemask_image()
         elif self.mask_color == 'both':
-            self.masked_image = self.redmask_image() + self.bluemask_image()    
+            self.masked_image = self.redmask_image() + self.bluemask_image()  
         
         return self.masked_image
 
@@ -111,7 +133,7 @@ class SignDetector:
         noise_removed_image: np.ndarray
         """
 
-        binary_masked_image = self.masked_image[:,:,0] + self.masked_image[:,:,2]
+        binary_masked_image = self.masked_image[:,:,0] + self.masked_image[:,:,1] + self.masked_image[:,:,2]
         holes_filled_image  = binary_fill_holes(binary_masked_image)
         noise_removed_image = np.array(morphology.remove_small_objects(holes_filled_image, min_size=self.minimum_isolated_pixel_area) * 255, dtype=np.uint8)
 
@@ -226,9 +248,11 @@ class SignDetector:
         std        = standard_deviation(center, contour)
 
         if len(max_ind) == 1:
-            if max_ind in [0, 2] and std > self.circle_std_threshold or max_ind == 2 and std > self.triangle_std_threshold:
+            if max_ind in [1, 3] and std > self.circle_std_threshold or max_ind == 2 and std > self.triangle_std_threshold:
                 return None, None
             else:
+                print('area: {}\nstd: {}\nclass: {}\nscore: {}\nrate: {}'.format(cv2.contourArea(contour), std, class_, max_score, cropped.shape[0]/cropped.shape[1]))
+                print('---'*20)
                 return max_score, class_
 
         else:

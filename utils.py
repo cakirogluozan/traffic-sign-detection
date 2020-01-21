@@ -1,3 +1,5 @@
+import numpy as np
+
 def standard_deviation(center, contour):
     """
     Standard deviation of contour.
