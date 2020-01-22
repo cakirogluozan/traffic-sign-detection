@@ -23,7 +23,7 @@ def fcn(weight_dir):
     model.load_weights(weight_dir)
     return model
 
-def lenet(weight_dir, input_shape):
+def lenet(weight_dir, input_shape, num_classes):
     inputs = Input(shape=input_shape)
 
     conv_out = Conv2D(6, (3, 3), activation='relu')(inputs)
@@ -33,7 +33,7 @@ def lenet(weight_dir, input_shape):
     flatten_out = Flatten()(avg_out2)
     dense_out = Dense(units=120, activation='relu')(flatten_out)
     dense_out2 = Dense(units=84, activation='relu')(dense_out)
-    outputs = Dense(units=4, activation='softmax')(dense_out2)
+    outputs = Dense(units=num_classes, activation='softmax')(dense_out2)
 
     model = Model(inputs=inputs, outputs=outputs)
     model.compile(optimizer='adam',

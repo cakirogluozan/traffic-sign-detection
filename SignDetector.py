@@ -6,6 +6,7 @@ from utils import get_distance, standard_deviation
 from time import time
 from scipy.ndimage.morphology import binary_fill_holes
 from skimage import morphology
+from class_dict import class_dict
 
 class SignDetector:
 
@@ -18,7 +19,7 @@ class SignDetector:
         mask_color: str
             mask_color in ["blue", "red", "both"] 
         """
-
+        # HSV FILTER PARAMETERS
         self.mask_color = mask_color
 
         self.lower_blue = np.array([110,109,66])
@@ -39,23 +40,27 @@ class SignDetector:
         self.lower_red = np.array([160,77,99])
         self.upper_red = np.array([180,255,255])
         '''
-
+        # GAUSSIAN FILTER PARAMETERS
         self.blurred_filter = (5, 5)
         self.blurred_param2 = 0
 
+        # BOUNDINGBOX and NOISE CANCELLING PARAMETERS
         self.contour_area_lower_threshold   = 2500
         self.contour_area_higher_threshold  = 400000
         self.contour_ratio_lower_threshold  = 5/6
         self.contour_ratio_higher_threshold = 6/5
         self.minimum_isolated_pixel_area    = 900
-
-        self.keras_weights_dir      = 'models/lenetv9.h5'
-        self.input_shape            = (32, 32, 1)
-        self.keras_model            = lenet(self.keras_weights_dir, input_shape=self.input_shape)
-        self.class_dict             = {0: 'negatives', 1: 'no-entry', 2: 'pedest-crossing', 3: 'turn-right'}
-        self.pred_confidency        = 0.9
         self.triangle_std_threshold = 50
         self.circle_std_threshold   = 10
+
+        # IMAGE CLASSIFICATION PARAMETERS
+        self.keras_weights_dir      = 'models/lenetv9.h5'
+        self.input_shape            = (32, 32, 1)
+        self.include_RGB            = False
+        self.num_classes            = 4
+        self.keras_model            = lenet(self.keras_weights_dir, self.input_shape, self.num_classes)
+        self.class_dict             = {0: 'negatives', 1: 'no-entry', 2: 'pedest-crossing', 3: 'turn-right'}
+        self.pred_confidency        = 0.9
 
 
     def bluemask_image(self): 
@@ -204,7 +209,7 @@ class SignDetector:
                     continue
                
                 cropped_image = self.image[y:y+h, x:x+w]
-                cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2GRAY) 
+
                 score, class_ = self.detect_traffic_sign(cropped_image, contour, center_of_bbox)
 
                 if score is None:
@@ -235,7 +240,13 @@ class SignDetector:
         """
 
         resized    = cv2.resize(cropped, (self.input_shape[0], self.input_shape[1]))
-        expanded   = np.expand_dims(resized, axis=[0,-1])
+
+        if self.include_RGB:
+            expanded = np.expand_dims(resized, axis=[0])
+        else:
+            gray     = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY) 
+            expanded = np.expand_dims(gray, axis=[0, -1])
+
         preds      = np.round(self.keras_model.predict(expanded)[0], 1)
 
         max_score  = np.amax(preds)
