@@ -72,8 +72,8 @@ class SignDetector:
         self.include_RGB            = False
         self.num_classes            = 4
         # self.keras_model            = lenet(self.keras_weights_dir, self.input_shape, self.num_classes)
-        self.class_dict             = {0: 'negatives', 1: 'no-entry', 2: 'pedest-crossing', 3: 'turn-right'}
-        self.pred_confidency        = 0.9
+        self.class_dict             = {0: 'pedest-crossing', 1: 'no-entry', 2: 'turn-right'}
+        self.pred_confidency        = 0.75
 
     def bluemask_image(self): 
         """
@@ -251,17 +251,12 @@ class SignDetector:
             gray     = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY) 
             crosswalk_score, noentry_score, turnright_score = self.find_score(gray)
             print('crosswalk: ',crosswalk_score, 'noentry: ', noentry_score, 'turnright: ', turnright_score)
-            return None, None
         
-        DNN = False
-        if DNN:
-            expanded = np.expand_dims(gray, axis=[0, -1])
 
-            preds      = np.round(self.keras_model.predict(expanded)[0], 1)
-            max_score  = np.amax(preds)
-            max_ind    = np.where(preds == max_score)[0]
-            class_     = self.class_dict[max_ind[0]]
-        max_score = 0
+        preds      = np.array([crosswalk_score, noentry_score, turnright_score])/64
+        max_score  = np.amax(preds)
+        max_ind    = np.where(preds == max_score)[0]
+        class_     = self.class_dict[max_ind[0]]
         if max_score < self.pred_confidency:
             return None, None
 
