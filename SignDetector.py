@@ -34,9 +34,24 @@ class SignDetector:
         self.lower_white   = np.array([0,0,200])
         self.upper_white   = np.array([180,30,255])
         
-        # TEMPLATE IMAGES
-        self.no_entry_dir  = 'sign_pngs/no-entri.png'
-        self.no_entry_img  = cv2.imread(self.no_entry_dir)
+        # PREDEFINED TRAFFIC SIGN FILTERS
+        '''
+        self.noentry_filter     = np.array([0.368, 0.264, 0.368])
+        self.pedestcross_filter = np.array([0.176, 0.705, 0.119])
+        self.turnright_filter   = np.array([0.290, 0.131, 0.579])
+        
+        self.noentry_vconst      = np.array([12, 8, 12])
+        self.pedestcross_vconst  = np.array([6, 22, 4])
+        self.turnright_vconst    = np.array([9, 4, 19])
+        '''
+        self.cnst = 2
+        self.noentry_vfilter     = np.array(self.cnst * 12*[-1] + self.cnst * 8*[1] + self.cnst * 12*[-1])
+        self.pedestcross_vfilter = np.array(self.cnst * 6*[-1]  + self.cnst * 22*[1] + self.cnst * 4*[-1])
+        self.turnright_vfilter   = np.array(self.cnst * 9*[-1]  + self.cnst * 4*[1] + self.cnst * 19*[-1])
+
+        self.noentry_hfilter     = np.array(self.cnst * 16*[1])
+        self.pedestcross_hfilter = np.array(self.cnst * 3*[-1] + self.cnst * 6*[1]  + self.cnst * 2*[-1] + self.cnst * 2*[1] + self.cnst * 3*[-1])
+        self.turnright_hfilter   = np.array(self.cnst * 4*[1]  + self.cnst * 5*[-1] + self.cnst * 3*[1]  + self.cnst * 4*[-1])
 
         # GAUSSIAN FILTER PARAMETERS
         self.blurred_filter = (5, 5)
@@ -53,10 +68,10 @@ class SignDetector:
 
         # IMAGE CLASSIFICATION PARAMETERS
         self.keras_weights_dir      = 'models/lenetv9.h5'
-        self.input_shape            = (32, 32, 1)
+        self.input_shape            = (64, 64, 1)
         self.include_RGB            = False
         self.num_classes            = 4
-        self.keras_model            = lenet(self.keras_weights_dir, self.input_shape, self.num_classes)
+        # self.keras_model            = lenet(self.keras_weights_dir, self.input_shape, self.num_classes)
         self.class_dict             = {0: 'negatives', 1: 'no-entry', 2: 'pedest-crossing', 3: 'turn-right'}
         self.pred_confidency        = 0.9
 
@@ -234,16 +249,19 @@ class SignDetector:
             expanded = np.expand_dims(resized, axis=[0])
         else:
             gray     = cv2.cvtColor(resized, cv2.COLOR_BGR2GRAY) 
-            bw_gray  = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)[1]
-            cv2.imshow('gray', gray)
+            crosswalk_score, noentry_score, turnright_score = self.find_score(gray)
+            print('crosswalk: ',crosswalk_score, 'noentry: ', noentry_score, 'turnright: ', turnright_score)
+            return None, None
+        
+        DNN = False
+        if DNN:
             expanded = np.expand_dims(gray, axis=[0, -1])
-            
 
-        preds      = np.round(self.keras_model.predict(expanded)[0], 1)
-        max_score  = np.amax(preds)
-        max_ind    = np.where(preds == max_score)[0]
-        class_     = self.class_dict[max_ind[0]]
-
+            preds      = np.round(self.keras_model.predict(expanded)[0], 1)
+            max_score  = np.amax(preds)
+            max_ind    = np.where(preds == max_score)[0]
+            class_     = self.class_dict[max_ind[0]]
+        max_score = 0
         if max_score < self.pred_confidency:
             return None, None
 
@@ -262,6 +280,7 @@ class SignDetector:
             return None, None
 
     def visualize_object(self, contour, bbox, class_, score):
+
         """
         Visualizing a bounding box on frame
 
@@ -277,3 +296,39 @@ class SignDetector:
         self.image = cv2.drawContours(self.image, [contour], -1, (0, 255, 0), 2)
         self.image = cv2.rectangle(self.image, (x,y), (x+w, y+h), (255,0,0), 1)
         self.image = cv2.putText(self.image, "{}:{}".format(class_, score), (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+
+
+
+    def find_score(self, gray):
+        bw_gray  = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)[1]
+        cv2.imshow('bw', bw_gray)
+        center_column = np.array(bw_gray[:,bw_gray.shape[0]//2]//255, dtype=np.int32)
+        center_column[center_column==0] = -1
+        half_center_row = np.array(bw_gray[bw_gray.shape[0]//2, bw_gray.shape[0]//4:3*bw_gray.shape[0]//4]//255, dtype=np.int32)
+        half_center_row[half_center_row == 0] = -1
+        
+        
+        crosswalk_score = self.find_crosswalk_matches(center_column, half_center_row)
+        noentry_score   = self.find_noentry_matches(center_column, half_center_row)
+        turnright_score = self.find_turnright_matches(center_column, half_center_row)
+        
+        return crosswalk_score, noentry_score, turnright_score
+
+    def find_crosswalk_matches(self, center_column, half_center_row):
+        crosswalk_vscore = len(np.where(center_column * self.pedestcross_vfilter== 1)[0])
+        crosswalk_hscore = len(np.where(half_center_row * self.pedestcross_hfilter== 1)[0])
+        crosswalk_score = sum([crosswalk_vscore/2, crosswalk_hscore])
+        return crosswalk_score
+
+
+    def find_noentry_matches(self, center_column, half_center_row):
+        noentry_vscore = len(np.where(center_column * self.noentry_vfilter== 1)[0])
+        noentry_hscore = len(np.where(half_center_row * self.noentry_hfilter== 1)[0])
+        noentry_score = sum([noentry_vscore/2, noentry_hscore])
+        return noentry_score
+
+    def find_turnright_matches(self, center_column, half_center_row):
+        turnright_vscore = len(np.where(center_column * self.turnright_vfilter== 1)[0])
+        turnright_hscore = len(np.where(half_center_row * self.turnright_hfilter== 1)[0])
+        turn_right_score = sum([turnright_vscore/2, turnright_hscore])
+        return turn_right_score
