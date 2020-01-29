@@ -1,6 +1,6 @@
 import numpy as np
 
-def standard_deviation(center, contour):
+def standard_deviation(center, contour, round=True):
     """
     Standard deviation of contour.
     
@@ -25,6 +25,8 @@ def standard_deviation(center, contour):
 
     distance_std = np.std(np.array(distance_list))
 
+    if round:
+        distance_std = np.round(distance_std, 2)
     return distance_std
 
 def get_distance(point, center):
